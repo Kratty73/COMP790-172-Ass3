@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html>
+<body>
+	<canvas id="myCanvas" width="900" height="600" style="border:1px solid #000;"></canvas>
+</body>
+<script type="text/javascript" src="script.js"></script>
+<script type="text/javascript">
+
+    var fps = 0;
+    var framesThisSecond = 0;
+    var keysdown = {};
+    var isProcessed = false;
+    var isWin = false;
+    var isStart = false;
+    const lineHeight = 20;
+    const lineWidth = 400;
+    var lastTimestamp = Date.now();
+    
+    setInterval(function() { fps = framesThisSecond; framesThisSecond = 0; }, 1000);
+    window.addEventListener("keydown", function (event) {
+        if (event.defaultPrevented) {
+            return; // Do nothing if the event was already processed
+        }
+        isProcessed = false;
+        keysdown[event.key] = true;
+
+        // Cancel the default action to avoid it being handled twice
+        event.preventDefault();
+    }, true);
+    // the last option dispatches the event to the listener first,
+    // then dispatches event to window
+
+    //Event listener for when the user releases a key
+    window.addEventListener("keyup", function (event) {
+        if (event.defaultPrevented) {
+            return; // Do nothing if the event was already processed
+        }
+
+        keysdown[event.key] = false;
+
+        // Cancel the default action to avoid it being handled twice
+        event.preventDefault();
+    }, true);
+    window.onload = function() {
+    var canvas = document.getElementById('myCanvas');
+    var context = canvas.getContext('2d');
+    
+    var reference_tree = new Tree(0.9, 4);
+
+    var solution_tree = new Tree(0.9, 1, null, null, true);
+    var timeRemaining = new Timer();
+    var selected_tree = solution_tree;
+
+    requestAnimationFrame(mainLoop);
+
+    //Game Loop
+    function mainLoop() {
+        processInput();
+        draw();
+        
+        requestAnimationFrame(mainLoop); //keep reiterating through this loop
+    }
+    
+    //Here is where we would update the state of our game or simulation (e.g., make the copters move).
+    function update(delta) {
+        reference_tree.update(delta);
+        solution_tree.update(delta);
+        ++framesThisSecond;
+        if(isStart){
+            timeRemaining.update(delta,isWin);
+        }
+    }
+
+    setInterval(function() {
+        var time = Date.now();
+        var delta = time-lastTimestamp;
+        lastTimestamp = time;
+        update(delta);
+    }, 10)
+
+    function checkSame(tree_a, tree_b){
+        if (tree_a instanceof Tree && tree_b instanceof Tree){
+            if (tree_a.child.length === tree_b.child.length){
+                same = true
+                for (let i = 0; i < tree_a.child.length; i++) {
+                    same = same && checkSame(tree_a.child[i], tree_b.child[i]);
+                }
+                return same
+            }
+        }
+        if (tree_a instanceof Leaf && tree_b instanceof Leaf){
+            return true
+        }
+        return false
+    }
+
+    function processInput() {
+        if (!isProcessed){
+            if(isWin || timeRemaining.over()){
+                if (keysdown.r){
+                    window.location.reload();
+                }
+            }
+            else{
+                if (keysdown.Enter){
+                    if(!isStart){
+                        isStart = true
+                    }
+                    if(selected_tree.isAddable()){
+                        selected_tree.add();
+                    }
+                    isProcessed=true;
+                }
+                if (keysdown.ArrowRight){
+                    if(selected_tree.parent && selected_tree.idx!=0){
+                        selected_tree.selected = false
+                        selected_tree.parent.child[selected_tree.idx-1].selected = true
+                        selected_tree = selected_tree.parent.child[selected_tree.idx-1]
+                    }
+                    isProcessed=true;
+                }
+                if (keysdown.ArrowLeft){
+                    if(selected_tree.parent && selected_tree.parent.child.length!==selected_tree.idx+1){
+                        selected_tree.selected = false
+                        selected_tree.parent.child[selected_tree.idx+1].selected = true
+                        selected_tree = selected_tree.parent.child[selected_tree.idx+1]
+                    }
+                    isProcessed=true;
+                }
+                if (keysdown.ArrowUp){
+                    if(selected_tree.child.length > 0 && selected_tree.child[0] instanceof Tree){
+                        selected_tree.selected = false
+                        selected_tree.child[0].selected = true
+                        selected_tree = selected_tree.child[0]
+
+                    }
+                    isProcessed=true;
+                }
+                if (keysdown.ArrowDown){
+                    if(selected_tree.parent){
+                        selected_tree.selected = false
+                        selected_tree.parent.selected = true
+                        selected_tree = selected_tree.parent
+                    }
+                    isProcessed=true;
+                }
+                if (keysdown.x){
+                    if (selected_tree.parent){
+                        selected_tree.parent.selected = true
+                        selected_tree.delete()
+                        selected_tree = selected_tree.parent                    
+                    }
+                    isProcessed=true;
+                }
+                isWin = checkSame(solution_tree, reference_tree);
+                if (isWin){
+                    selected_tree.selected = false;
+                    selected_tree = null;
+                }
+            }
+        }
+
+    }
+
+    function getText(){
+        if (!isStart){
+            return 'Navigate the tree using arrow keys, \n press `Enter` to add a branch at the end, \n press `X` to remove the branch, \n replicate the given tree before time runs out. \n Press `Enter` to start'
+        }
+        if (timeRemaining.over()){
+            return 'You Loose!! press R to restart'
+        }
+        if (isStart && !isWin){
+            return 'Navigate the tree using arrow keys, \n press `Enter` to add a branch at the end, \n press `X` to remove the branch, \n replicate the given tree before time runs out.'
+        }
+        if (isWin){
+            return 'You Win!! press R to restart'
+        }
+        
+
+    }
+
+    function getLines(context, text){
+        var words = text.split(" ")
+        lines = []
+        current_line = ""
+        for (let i = 0; i < words.length; i++) {
+            if (words[i]==='\n'){
+                lines.push(current_line)
+                current_line = ""
+            }
+            else{
+                var new_line = current_line+words[i]+' '
+                var new_width = context.measureText(new_line).width;
+                if (new_width<=lineWidth){
+                    current_line = new_line
+                }
+                else{
+                    lines.push(current_line)
+                    current_line = words[i]+' '
+                }
+            }
+        }
+        lines.push(current_line)
+        return lines
+
+    }
+    
+    //Draw the scene. Here we simply erase what was previously drawn (e.g., where the copters used to be), then draw it again
+    function draw() {
+        
+        //clear our drawing
+        context.clearRect(-0.5*canvas.width, canvas.height, 2*canvas.width, -2*canvas.height);
+        //save the coordinate frame (in case we wanted to draw other things after the copters)
+        context.save();
+        context.scale(0.5, 0.5);
+        context.translate(150, 300);
+        // reference tree
+        reference_tree.draw(context);
+        context.scale(2, 2);
+        // solution tree
+        context.translate(400, 400);
+        solution_tree.draw(context)
+
+        // Display messaage
+        context.translate(-100, -500);
+        context.font = "20px seriff";
+        text = getText();
+        const lineWidth = context.measureText(text).width;
+        const lines = getLines(context, text);
+        var leftMargin = 10;
+        var topMargin = 50;
+        for (let i = 0; i < lines.length; i++) {
+            context.fillText(lines[i], leftMargin, topMargin);
+            topMargin += lineHeight;
+        }
+        timeRemaining.draw(context);
+        //restore the coordinate frame (in case we wanted to draw other things)
+        context.restore();
+        context.fillText("FPS: " + fps, 10, 10);
+    }
+
+}
+</script>
+<head>
+  <meta name="description" content="Peaceful tree">
+  <meta charset="utf-8">
+  <title>Peaceful tree</title>
+</head>
+</html>
